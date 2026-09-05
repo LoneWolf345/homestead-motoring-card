@@ -36,7 +36,9 @@ const cfg = () => ({ name: "Robbin", odometer_entity: "sensor.robbin_odometer", 
   door_position_entity: "sensor.garage_door_position", door_binary_entity: "binary_sensor.garage_overhead_door",
   chores: [{ name: "Tire rotation", entity: "sensor.robbin_tesla_tire_rotation" }],
   plates: { car: { src: "/local/motoring/plate-car.jpg", caption: "Robbin at home." }, empty: { src: "/local/motoring/plate-empty.jpg", caption: "The bay, unoccupied." },
-            half: { src: "/local/motoring/plate-half.jpg", caption: "The door, in two minds." }, closed: { src: "/local/motoring/plate-closed.jpg", caption: "The garage, closed for comment." } } });
+            half: { src: "/local/motoring/plate-half.jpg", caption: "The door, in two minds." },
+            half_car: { src: "/local/motoring/plate-half-car.jpg", caption: "Robbin, going or coming." }, half_empty: { src: "/local/motoring/plate-half-empty.jpg", caption: "The door descends on nothing." },
+            closed: { src: "/local/motoring/plate-closed.jpg", caption: "The garage, closed for comment." } } });
 const make = async (states, c) => { const el = new Card(); el.setConfig(c || cfg()); el.hass = { states, callWS: stats }; await tick(); await tick(); return el; };
 
 check("card registered", typeof Card === "function");
@@ -65,7 +67,11 @@ check("setConfig rejects missing odometer_entity", (() => { try { new Card().set
 
 { const st = base(); st["sensor.garage_door_position"] = S(17);
   const el = await make(st); const h = el.shadowRoot.innerHTML;
-  check("door 17% → half plate + tag suffix + ajar", h.includes('src="/local/motoring/plate-half.jpg"') && h.includes("CHARGING · DOOR 17%") && h.includes("door ajar") && h.includes('<div class="cv">17%</div>')); }
+  check("door 17% + home → half_car plate + tag suffix + ajar", h.includes('src="/local/motoring/plate-half-car.jpg"') && h.includes("CHARGING · DOOR 17%") && h.includes("door ajar") && h.includes('<div class="cv">17%</div>'));
+  st["device_tracker.robbin_location"] = S("not_home");
+  const el2 = await make(st); check("door 17% + away → half_empty plate", el2.shadowRoot.innerHTML.includes('src="/local/motoring/plate-half-empty.jpg"'));
+  const c = cfg(); delete c.plates.half_car; delete c.plates.half_empty; st["device_tracker.robbin_location"] = S("home");
+  const el3 = await make(st, c); check("no half variants configured → falls back to half", el3.shadowRoot.innerHTML.includes('src="/local/motoring/plate-half.jpg"')); }
 
 { const st = base(); st["sensor.robbin_charging"] = S("disconnected"); st["binary_sensor.robbin_charge_cable"] = S("off");
   const rows0 = rows[rows.length - 1]; const save = rows0.change; rows0.change = 0.3;

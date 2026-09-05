@@ -69,7 +69,7 @@ plates:
 | `door_position_entity` | `''` | 0–100 %; ≥60 open plate, 1–59 half plate, 0 closed |
 | `door_binary_entity` | `''` | Fallback when no position sensor |
 | `chores` | `[]` | `[{name, entity}]` Maintenance Supporter sensors |
-| `plates` | `{}` | `car` / `empty` / `half` / `closed` → `{src, caption}` |
+| `plates` | `{}` | `car` / `empty` / `half` / `half_car` / `half_empty` / `closed` → `{src, caption}`; the half variants pick by the car's presence, falling back to `half` |
 | `name`, `title`, `kicker` | `Robbin`, `THE MOTORING DESK`, `<NAME>, HOUSEHOLD MOTOR` | Copy identity |
 | `plate_number`, `plate_credit`, `tag_position` | `III`, `Engraving after a photograph`, `br` | Plate furniture |
 | `days`, `footer`, `column_rule` | `14`, house line, `false` | |
@@ -80,4 +80,4 @@ Honors `--almanac-paper` (set `transparent` for a one-sheet newspaper look), `--
 
 ## Plates
 
-`docs/plates/`: `car.jpg`, `empty.jpg`, `half.jpg`, `closed.jpg` — the house's own garage front, drawn from a photograph as woodcuts (brown ink on cream; a single terracotta spot on the car, everything else monochrome), 912×387, printed in multiply. `car-warmroof-alternate.jpg` keeps the terracotta roof tiles.
+`docs/plates/`: `car.jpg`, `empty.jpg`, `half.jpg`, `half-car.jpg` (the car's nose under the descending door), `half-empty.jpg`, `closed.jpg` — the house's own garage front, drawn from a photograph as woodcuts (brown ink on cream; a single terracotta spot on the car, everything else monochrome), 912×387, printed in multiply. `car-warmroof-alternate.jpg` keeps the terracotta roof tiles.

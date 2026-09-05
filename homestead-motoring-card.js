@@ -4,7 +4,7 @@
  * 14-day miles-per-day chart from recorder statistics, a five-cell strip and the service-desk
  * rows. Read-only: tap → more-info. Companion to almanac-weather-card / network-ledger-card /
  * homestead-classifieds-card / homestead-waterworks-card / homestead-pool-card. */
-const HMC_VERSION = "2026.9.1";
+const HMC_VERSION = "2026.9.2";
 const INK = "#3a2d1f", PAPER = "#f3e7d3", TAN = "#a3876a", BROWN = "#7a6248",
   TERRA = "#c65f38", BLUE = "#5f7e94", DOT = "#cfb894", GREEN = "#2f7f6f";
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -35,7 +35,7 @@ class HomesteadMotoringCard extends HTMLElement {
       footer: "Compiled from telemetry the car files voluntarily. Mileage figures are the odometer's own account.",
     }, config);
     const pl = {};
-    for (const k of ["car", "empty", "half", "closed"]) { const p = (config.plates || {})[k]; if (p) pl[k] = typeof p === "string" ? { src: p, caption: "" } : { src: p.src || "", caption: p.caption || "" }; }
+    for (const k of ["car", "empty", "half", "half_car", "half_empty", "closed"]) { const p = (config.plates || {})[k]; if (p) pl[k] = typeof p === "string" ? { src: p, caption: "" } : { src: p.src || "", caption: p.caption || "" }; }
     c.plates = pl;
     this._cfg = c;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
@@ -120,9 +120,9 @@ class HomesteadMotoringCard extends HTMLElement {
     return Object.assign(best, { row: `${best.name} · ${when}`, lede: best.due ? `The ${best.name.toLowerCase()} is owed${d < 0 ? " already" : d === 0 ? " today" : dow != null ? " by " + DAYS[dow] : ""}. ` : "" });
   }
   _plateMode(sit, door) {
-    const p = door.p == null ? 0 : door.p;
-    const mode = p >= 60 ? (sit.home ? "car" : "empty") : p > 0 ? "half" : "closed";
-    const pl = this._cfg.plates[mode] || this._cfg.plates.closed || this._cfg.plates.car || null;
+    const p = door.p == null ? 0 : door.p, pls = this._cfg.plates;
+    const mode = p >= 60 ? (sit.home ? "car" : "empty") : p > 0 ? (sit.home ? "half_car" : "half_empty") : "closed";
+    const pl = pls[mode] || (mode.startsWith("half") ? pls.half : null) || pls.closed || pls.car || null;
     return { mode, plate: pl };
   }
 
@@ -183,7 +183,7 @@ class HomesteadMotoringCard extends HTMLElement {
     if (pm.plate && pm.plate.src) {
       const pos = ["br", "bl", "tr", "tl"].includes(c.tag_position) ? c.tag_position : "br";
       let tl = !sit.home ? "OUT ON BUSINESS" : sit.charging ? "CHARGING" : sit.cable ? "PLUGGED IN" : "PARKED";
-      if (pm.mode === "half") tl += ` · DOOR ${door.p}%`;
+      if (pm.mode.startsWith("half")) tl += ` · DOOR ${door.p}%`;
       plate = `<div class="fig" data-entity="${esc(c.battery_entity || c.odometer_entity)}"><img src="${esc(pm.plate.src)}" alt=""><div class="tag ${pos}"><div class="tv">${bat == null ? "—" : r0(bat) + "%"}</div><div class="tl">${esc(tl)}</div></div></div>
       <div class="plate"><span><b>PLATE ${esc(c.plate_number)}.</b> <i>${esc(pm.plate.caption || "")}</i></span><span class="r"><i>${esc(c.plate_credit)}</i></span></div>`;
     }
