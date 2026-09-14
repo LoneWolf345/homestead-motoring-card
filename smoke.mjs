@@ -1,7 +1,8 @@
 // smoke.mjs — node harness for homestead-motoring-card
 import fs from "node:fs"; import vm from "node:vm";
 const src = fs.readFileSync(new URL("./homestead-motoring-card.js", import.meta.url), "utf8");
-class HTMLElement { constructor() { this._sr = null; this.style = {}; this._h = 700; } attachShadow() { this._sr = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null }; return this._sr; } get shadowRoot() { return this._sr; } dispatchEvent() {} getBoundingClientRect() { return { height: this._h }; } }
+// the shadow root counts innerHTML assignments (`_sets`) so the render-dedupe check can see a swap that should not happen
+class HTMLElement { constructor() { this._sr = null; this.style = {}; this._h = 700; this._sets = 0; } attachShadow() { const self = this; let html = ""; this._sr = { get innerHTML() { return html; }, set innerHTML(v) { html = v; self._sets++; }, querySelectorAll: () => [], querySelector: () => null }; return this._sr; } get shadowRoot() { return this._sr; } dispatchEvent() {} getBoundingClientRect() { return { height: this._h }; } }
 const defs = {}; const store = new Map();
 const localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
 const ctx = { HTMLElement, customElements: { define: (n, c) => (defs[n] = c) }, document: { getElementById: () => null, createElement: () => ({}), head: { appendChild() {} } }, console, CustomEvent: class { constructor(t, o) { this.type = t; this.detail = o && o.detail; } }, setInterval: () => 0, clearInterval() {}, setTimeout, Date, localStorage };
@@ -39,7 +40,8 @@ const cfg = () => ({ name: "Robbin", odometer_entity: "sensor.robbin_odometer", 
             half: { src: "/local/motoring/plate-half.jpg", caption: "The door, in two minds." },
             half_car: { src: "/local/motoring/plate-half-car.jpg", caption: "Robbin, going or coming." }, half_empty: { src: "/local/motoring/plate-half-empty.jpg", caption: "The door descends on nothing." },
             closed: { src: "/local/motoring/plate-closed.jpg", caption: "The garage, closed for comment." } } });
-const make = async (states, c) => { const el = new Card(); el.setConfig(c || cfg()); el.hass = { states, callWS: stats }; await tick(); await tick(); return el; };
+// three ticks: the fetch resolves on the first, the loaded render's _remember() fires 60 ms later
+const make = async (states, c) => { const el = new Card(); el.setConfig(c || cfg()); el.hass = { states, callWS: stats }; await tick(); await tick(); await tick(); return el; };
 
 check("card registered", typeof Card === "function");
 check("setConfig rejects missing odometer_entity", (() => { try { new Card().setConfig({}); return false; } catch (e) { return /odometer_entity/.test(e.message); } })());
@@ -100,5 +102,34 @@ check("setConfig rejects missing odometer_entity", (() => { try { new Card().set
   store.set("hmc-h:sensor.robbin_odometer", "812");
   const el2 = new Card(); el2.setConfig(cfg()); el2.hass = { states: base(), callWS: () => new Promise(() => {}) }; await tick();
   check("stats pending: reserves remembered height", el2.style.minHeight === "812px"); }
+
+// ---- hostile strings, an unavailable odometer, render dedupe, a config change mid-fetch, next_due with a time part
+{ const c = cfg(); c.name = "<img src=x onerror=alert(1)>";
+  const el = await make(base(), c); const h = el.shadowRoot.innerHTML;
+  check("hostile car name prints escaped, never raw", h.includes("&lt;img src=x onerror=alert(1)&gt; takes on charge") && h.includes("&lt;IMG SRC=X ONERROR=ALERT(1)&gt;, HOUSEHOLD MOTOR") && !h.includes("<img src=x")); }
+
+{ const st = base(); st["sensor.robbin_odometer"] = S("unavailable"); st["sensor.robbin_battery_level"] = S("unavailable");
+  let el = null, threw = false; try { el = await make(st); } catch (e) { threw = true; }
+  const h = el ? el.shadowRoot.innerHTML : "";
+  check("unavailable odometer/battery: renders, no error shell, no NaN/undefined", !threw && h.includes("Robbin takes on charge: — percent") && h.includes("odometer — mi") && !h.includes("color:#b00") && !/NaN|undefined/.test(h)); }
+
+{ const el = new Card(); el.setConfig(cfg()); const hass = { states: base(), callWS: () => new Promise(() => {}) };
+  el.hass = hass; el.hass = hass; await tick();
+  check("render dedupe: the same hass twice → exactly one innerHTML assignment", el._sets === 1 && el.shadowRoot.innerHTML.includes("THE MOTORING DESK")); }
+
+{ let resolve; const pending = new Promise((r) => { resolve = r; });
+  const el = new Card(); el.setConfig(cfg());
+  el.hass = { states: base(), callWS: () => pending };
+  const c2 = cfg(); c2.odometer_entity = "sensor.other_odometer"; el.setConfig(c2);
+  resolve({ "sensor.robbin_odometer": rows }); await tick(); await tick();
+  check("setConfig mid-fetch: the stale statistics are discarded", el._stats === null && el._statsAt === 0);
+  el.hass = { states: base(), callWS: stats }; await tick(); await tick();
+  check("…and the next hass fetches afresh for the new config", Array.isArray(el._stats) && el._statsAt > 0); }
+
+{ const d3 = new Date(day0); d3.setDate(day0.getDate() + 3);
+  const iso = `${d3.getFullYear()}-${String(d3.getMonth() + 1).padStart(2, "0")}-${String(d3.getDate()).padStart(2, "0")}`;
+  const st = base(); st["sensor.robbin_tesla_tire_rotation"] = S("ok", { next_due: iso + "T00:00:00+00:00" });
+  const el = await make(st); const h = el.shadowRoot.innerHTML;
+  check("next_due with a time part: sliced to the day, prints due <Day> (3 days)", /Tire rotation · due [A-Z][a-z]{2} \(3 days\)/.test(h) && !/NaN|undefined/.test(h)); }
 
 console.log(fails ? `\n${fails} FAILED` : "\nall passed"); process.exit(fails ? 1 : 0);

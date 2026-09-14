@@ -6,7 +6,7 @@
 
 **What it prints**
 
-- **A woodcut plate of the garage front that mirrors reality.** Four plates (drawn from a photograph of the house): door **closed** · door **half-lowered** · open with **the car inside** · open and **empty**. The card picks one from the garage-door position sensor and the car's location — and the single spot of color is the car itself, so the plate literally loses its color when the car is out.
+- **A woodcut plate of the garage front that mirrors reality.** Six plate keys (drawn from a photograph of the house): door **closed** · door **half-lowered** with the car (`half_car`) or without it (`half_empty`, both falling back to a single `half`) · open with **the car inside** · open and **empty**. The card picks one from the garage-door position sensor and the car's location — and the single spot of color is the car itself, so the plate literally loses its color when the car is out.
 - **A state-driven headline** — charging ("Robbin takes on charge: 58 percent, bound for 80 by 8:50 AM"), away ("Robbin is abroad…"), resting, or "Not a mile turned today".
 - **A drop-cap lede** with today's miles against the fourteen-day habit, the charge in progress, cabin vs yard temperature, an "unlocked, it must be said" clause when warranted, and the sentry's posture.
 - **Days on the road** — hatched miles-per-day bars from recorder statistics of the odometer (`total_increasing`), today in terracotta, dashed average.

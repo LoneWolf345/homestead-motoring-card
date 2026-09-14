@@ -4,7 +4,7 @@
  * 14-day miles-per-day chart from recorder statistics, a five-cell strip and the service-desk
  * rows. Read-only: tap → more-info. Companion to almanac-weather-card / network-ledger-card /
  * homestead-classifieds-card / homestead-waterworks-card / homestead-pool-card. */
-const HMC_VERSION = "2026.9.2";
+const HMC_VERSION = "2026.9.3";
 const INK = "#3a2d1f", PAPER = "#f3e7d3", TAN = "#a3876a", BROWN = "#7a6248",
   TERRA = "#c65f38", BLUE = "#5f7e94", DOT = "#cfb894", GREEN = "#2f7f6f";
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -18,6 +18,7 @@ const fmt = (v, d = 0) => (v == null ? "—" : v.toLocaleString(undefined, { min
 const pad2 = (n) => String(n).padStart(2, "0");
 const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const clock = (d) => (d ? `${d.getHours() % 12 || 12}:${pad2(d.getMinutes())} ${d.getHours() >= 12 ? "PM" : "AM"}` : "—");
+const dateOnly = (v) => String(v ?? "").slice(0, 10); // a next_due of "2026-09-14T00:00:00+00:00" must still parse as the day
 
 class HomesteadMotoringCard extends HTMLElement {
   static getStubConfig() { return { name: "Robbin", odometer_entity: "sensor.robbin_odometer", battery_entity: "sensor.robbin_battery_level" }; }
@@ -40,6 +41,8 @@ class HomesteadMotoringCard extends HTMLElement {
     this._cfg = c;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this._sig = null; this._stats = null; this._statsAt = 0; this._statsDay = "";
+    // a new config retires any fetch still in flight: its result is checked against this number after every await
+    this._fetchSeq = (this._fetchSeq || 0) + 1; this._fetching = false;
     if (this._fontsReady === undefined) {
       const fonts = typeof document !== "undefined" && document.fonts;
       this._fontsReady = !fonts;
@@ -59,14 +62,16 @@ class HomesteadMotoringCard extends HTMLElement {
     const day = ymd(new Date());
     if (this._fetching || !this._hass || !this._hass.callWS || (Date.now() - this._statsAt < 30 * 60000 && this._statsDay === day)) return;
     this._fetching = true;
+    const seq = this._fetchSeq;
     try {
       const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - this._cfg.days);
       const r = await this._hass.callWS({ type: "recorder/statistics_during_period", start_time: start.toISOString(), statistic_ids: [this._cfg.odometer_entity], period: "day", types: ["change"] });
+      if (seq !== this._fetchSeq) return;
       const rows = (r && r[this._cfg.odometer_entity]) || [];
       this._stats = rows.map((x) => ({ day: ymd(new Date(x.start)), mi: x.change == null ? null : Math.max(0, x.change) })).filter((x) => x.mi != null);
       this._statsAt = Date.now(); this._statsDay = day; this._sig = null; this._render();
     } catch (e) { /* keep the last rows */ }
-    finally { this._fetching = false; }
+    finally { if (seq === this._fetchSeq) this._fetching = false; }
   }
   _series() {
     const today = ymd(new Date());
@@ -109,13 +114,14 @@ class HomesteadMotoringCard extends HTMLElement {
       const s = this._st(ch.entity); if (!s) continue;
       const a = s.attributes || {};
       let days = num(a.days_until_due);
-      if (days == null && a.next_due) { const d = new Date(a.next_due + "T00:00:00"); days = Math.round((d - new Date(ymd(now) + "T00:00:00")) / 86400000); }
-      if (days == null) continue;
+      if (days == null && a.next_due) { const d = new Date(dateOnly(a.next_due) + "T00:00:00"); days = Math.round((d - new Date(ymd(now) + "T00:00:00")) / 86400000); }
+      if (days == null || isNaN(days)) continue;
       const item = { name: ch.name || ch.entity, entity: ch.entity, days, due: s.state === "due_soon" || s.state === "overdue" || days <= 0, next: a.next_due };
       if (!best || item.days < best.days) best = item;
     }
     if (!best) return null;
-    const d = best.days, dow = best.next ? new Date(best.next + "T00:00:00").getDay() : null;
+    const nd = best.next ? new Date(dateOnly(best.next) + "T00:00:00") : null;
+    const d = best.days, dow = nd && !isNaN(nd) ? nd.getDay() : null;
     const when = d < 0 ? `overdue ${-d} day${-d === 1 ? "" : "s"}` : d === 0 ? "due today" : d === 1 ? "due tomorrow" : `due ${dow != null ? DAY3[dow] : "in " + d + " days"}${dow != null ? ` (${d} days)` : ""}`;
     return Object.assign(best, { row: `${best.name} · ${when}`, lede: best.due ? `The ${best.name.toLowerCase()} is owed${d < 0 ? " already" : d === 0 ? " today" : dow != null ? " by " + DAYS[dow] : ""}. ` : "" });
   }
@@ -284,10 +290,11 @@ class HomesteadMotoringCard extends HTMLElement {
   }
 }
 
-if (!document.getElementById("hwc-font") && !document.getElementById("hpc-font") && !document.getElementById("hmc-font")) {
+// One font sheet for every Homestead Times card: the first card to load injects it, the rest find it.
+if (!document.getElementById("homestead-times-font")) {
   const l = document.createElement("link");
-  l.id = "hmc-font"; l.rel = "stylesheet";
-  l.href = "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400&family=Archivo:wght@400;600;700&display=swap";
+  l.id = "homestead-times-font"; l.rel = "stylesheet";
+  l.href = "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400&family=Archivo:wght@400;500;600;700&display=swap";
   document.head.appendChild(l);
 }
 customElements.define("homestead-motoring-card", HomesteadMotoringCard);
